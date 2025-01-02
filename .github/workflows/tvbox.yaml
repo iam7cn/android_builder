@@ -28,13 +28,13 @@ jobs:
           - userName: iam7cn
             repoName: TVBoxOS
             branchName: main
-         # - userName: takagen99
-         #   repoName: Box
-        #  branchName: main
-        #    java_ver: 17
-        #  - userName: mlabalabala
-         #   repoName: box
-        #    branchName: main
+          - userName: takagen99
+            repoName: Box
+          branchName: main
+            java_ver: 17
+          - userName: mlabalabala
+            repoName: box
+            branchName: main
           #- userName: XiaoRanLiu3119
             #repoName: TVBoxOS-Mobile
             #branchName: main
