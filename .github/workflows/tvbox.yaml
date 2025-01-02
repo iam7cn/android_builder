@@ -27,7 +27,31 @@ jobs:
         include:
           - userName: iam7cn
             repoName: TVBoxOS
-            branchName: main         
+            branchName: main
+         # - userName: takagen99
+         #   repoName: Box
+        #  branchName: main
+        #    java_ver: 17
+        #  - userName: mlabalabala
+         #   repoName: box
+        #    branchName: main
+          #- userName: XiaoRanLiu3119
+            #repoName: TVBoxOS-Mobile
+            #branchName: main
+            
+    env:
+      # 登录蓝奏云后在控制台运行document.cookie
+      # cookie的ylogin
+      ylogin: ${{ secrets.YLOGIN }}
+      # cookie的phpdisk_info
+      phpdisk_info: ${{ secrets.PHPDISK_INFO }}
+      # 蓝奏云里的文件夹ID，cookie的folder_id_c
+      lanzou_folder_id: ${{ secrets.FOLDER_ID }}
+      
+      # Telegram
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@main
@@ -45,12 +69,14 @@ jobs:
             echo "commit=$commit" >> $GITHUB_ENV
             echo "commitS=${commit:0:7}" >> $GITHUB_ENV
           fi
+
       - name: Checkout Source Code
         if: ${{ env.commit }}
         run: |
           cd TVBoxOSC
           git checkout ${{ env.commit }}
           echo "tag=$(git log --date=format:'%Y%m%d-%H%M' --pretty=format:%cd ${{ env.commitS }} -1)" >> $GITHUB_ENV
+
       - name: Extra Modify
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -77,6 +103,7 @@ jobs:
         working-directory: TVBoxOSC
         run: |
           tar -cJf source-${{ env.commitS }}.tar.xz --exclude=.git --exclude=.github *
+
       - name: Option For Test
         if: ${{ inputs.testOption }}
         working-directory: TVBoxOSC
@@ -84,6 +111,7 @@ jobs:
           #添加arm64支持，不支持ijk解码
           sed -i "/armeabi-v7a[\'\"]$/s#\$#, 'arm64-v8a'#" app/build.gradle
           sed -i "/armeabi-v7a[\'\"]$/s#\$#, 'arm64-v8a'#" player/build.gradle
+
       - name: Release Apk Sign
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -98,6 +126,7 @@ jobs:
           sed -i '$a\RELEASE_KEY_ALIAS=TVBoxOSC'            ./gradle.properties
           sed -i '$a\RELEASE_STORE_PASSWORD=TVBoxOSC'       ./gradle.properties
           sed -i '$a\RELEASE_KEY_PASSWORD=TVBoxOSC'         ./gradle.properties
+
       - name: Cache
         uses: actions/cache@main
         if: ${{ env.commit }}
@@ -125,6 +154,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
+
       - name: Prepare App
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -134,6 +164,7 @@ jobs:
           for file in `find ~ -name "*.apk" -print`; do
             mv "$file" apk/TVBox_${{ matrix.userName }}_${{ env.tag }}.apk
           done
+
       - name: Release Note
         if: ${{ env.commit }}
         working-directory: TVBoxOSC
@@ -146,6 +177,7 @@ jobs:
           else
             git log --pretty=format:%B ${{ env.commitS }}...${lastCommit:0:7} |sed -e "s# \{2,\}#\n#g" -e "/^Merge \(pull\|branch\|remote\)/d" -e '/^$/d' |cat -n |sort -k2,2 -k1,1n |uniq -f1 |sort -k1,1n |cut -f2- >> apk/${{ matrix.userName }}-Release.log
           fi
+
       - name: Upload App To Artifact
         uses: actions/upload-artifact@main
         if: ${{ env.commit }}
@@ -154,11 +186,13 @@ jobs:
           name: ${{ matrix.userName }}-${{ matrix.repoName }}
           path: |
             TVBoxOSC/apk/*
+
       - name: Whether Or Not to Publish
         if: ${{ inputs.donotpublish && env.commit }}
         continue-on-error: true
         run: |
           echo "commit=" >> $GITHUB_ENV
+
       - name: Release and Upload Assets
         uses: ncipollo/release-action@main
         if: ${{ env.commit }}
@@ -171,7 +205,40 @@ jobs:
           removeArtifacts: true
           artifacts: |
             TVBoxOSC/apk/*.apk
-            TVBoxOSC/source-${{ env.commitS }}.*      
+            TVBoxOSC/source-${{ env.commitS }}.*
+
+      - name: Post To Telegram
+        if: ${{ env.commit && env.TELEGRAM_CHAT_ID && env.TELEGRAM_BOT_TOKEN }}
+        continue-on-error: true
+        working-directory: TVBoxOSC
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ] && [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            OUTPUT="${{ github.workspace }}/TVBoxOSC"
+            export appRelease=$(find $OUTPUT/apk/ -name "*${{ matrix.userName }}*.apk")
+            export sourceCode=$(find $OUTPUT -name "source-${{ env.commitS }}.*")
+            ESCAPED="$(sed -e '1s/\[\(.*\)\].*/#\1/' -e 's#\([&"\/]\)#\\\1#g' apk/${{ matrix.userName }}-Release.log)"
+            count=$(echo "$ESCAPED" |wc -m |cut -d ' ' -f1)
+            if [ ${count} -eq 1 ] || [ ${count} -gt 1024 ]; then
+              ESCAPED="$(echo -e "Credit: #${{ matrix.userName }}\nCommit: ${{ env.commit }}\nChangelog:\n${{ env.upStream }}/commits/${{ matrix.branchName }}")"
+            fi
+            ESCAPED=`python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$ESCAPED"`
+            #检查源码尺寸，太大则不上传
+            file_size=$(du -s ${sourceCode} | awk '{print $1}')
+            #文件最大值，1024代表1M
+            file_limit_size=20480
+            if [[ ${file_size} -lt ${file_limit_size} ]];then
+              curl -v "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMediaGroup?chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FappRelease%22%7D%2C%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FsourceCode%22%2C%20%22caption%22%3A%22${ESCAPED}%22%7D%5D" -F appRelease="@$appRelease" -F sourceCode="@$sourceCode"
+            else
+              curl -v "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMediaGroup?chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&media=%5B%7B%22type%22%3A%22document%22%2C%20%22media%22%3A%22attach%3A%2F%2FappRelease%22%2C%20%22caption%22%3A%22${ESCAPED}%22%7D%5D" -F appRelease="@$appRelease"
+            fi
+          fi
+
+      - name: Upload App To Lanzou
+        if: ${{ env.commit && env.ylogin && env.phpdisk_info && env.lanzou_folder_id }}
+        continue-on-error: true
+        run: |
+          rm -rf ${{ github.workspace }}/TVBoxOSC/apk/*.log
+          python3 ${{ github.workspace }}/.github/scripts/lzy.py "${{ github.workspace }}/TVBoxOSC/apk/" "$lanzou_folder_id"
           
       - name: Push to master
         if: ${{ env.commit }}
