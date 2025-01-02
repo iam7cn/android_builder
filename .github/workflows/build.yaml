@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout the code
         uses: actions/checkout@v3
@@ -15,7 +15,7 @@ jobs:
           java-version: 11
       - id: get-project
         name: Get project name
-        run: echo "::GITHUB_OUTPUT name=PROJECT::$(cat project-to-build)"
+        run: echo "::set-output name=PROJECT::$(cat project-to-build)"
       - name: Clone project
         run: git clone --depth=1 ${{ steps.get-project.outputs.PROJECT }} project
       - name: Build the app
