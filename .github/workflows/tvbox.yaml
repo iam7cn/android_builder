@@ -30,7 +30,7 @@ jobs:
             branchName: main
           - userName: takagen99
             repoName: Box
-          branchName: main
+            branchName: main
             java_ver: 17
           - userName: mlabalabala
             repoName: box
